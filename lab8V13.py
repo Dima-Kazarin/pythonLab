@@ -1,12 +1,15 @@
 from random import randint
 
 
+def calculate_shift(x, y):
+    s = int(input('Enter matrix shift - '))
+    direct = int(input('Enter shift direction(0 - to right, 1 - to down) - '))
+
+    return s % y if not direct else s % x, direct
+
+
 def fill_the_matrix(x, y):
-    mat = []
-    for i in range(x):
-        row = [randint(-9, 10) for _ in range(y)]
-        mat.append(row)
-    return mat
+    return [[randint(-9, 10) for _ in range(y)] for _ in range(x)]
 
 
 def print_matrix(mat):
@@ -14,17 +17,15 @@ def print_matrix(mat):
         print(i)
 
 
-def shift_the_matrix(x, y, s, direct, mat, mat_shift):
-    if direct == 0 or direct == 1:
-        if direct == 0:
-            for i in range(x):
-                for j in range(y):
-                    mat_shift[i][j] = mat[i][(j + y - s) % y]
+def validate_direction(direct):
+    return direct in (0, 1)
 
-        if direct == 1:
-            for i in range(x):
-                for j in range(y):
-                    mat_shift[i][j] = mat[(i + x - s) % x][j]
+
+def shift_the_matrix(x, y, s, direct, mat, mat_shift):
+    if validate_direction(direct):
+        for i in range(x):
+            for j in range(y):
+                mat_shift[i][j] = mat[i][(j + y - s) % y] if direct == 0 else mat[(i + x - s) % x][j]
 
         print('Initial matrix: ')
         print_matrix(mat)
@@ -37,10 +38,7 @@ def shift_the_matrix(x, y, s, direct, mat, mat_shift):
 
 rows = int(input('Enter the number of rows - '))
 columns = int(input('Enter the number of columns - '))
-shift = int(input('Enter matrix shift - '))
-direction = int(input('Enter shift direction(0 - to right, 1 - to down) - '))
-
-shift = shift % columns if direction == 0 else shift % rows
+shift, direction = calculate_shift(rows, columns)
 
 matrix = fill_the_matrix(rows, columns)
 matrix_shift = fill_the_matrix(rows, columns)

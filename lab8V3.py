@@ -2,11 +2,7 @@ from random import randint
 
 
 def fill_the_matrix(x, y):
-    mat = []
-    for i in range(x):
-        row = [randint(-9, 10) for _ in range(y)]
-        mat.append(row)
-    return mat
+    return [[randint(-9, 10) for _ in range(y)] for _ in range(x)]
 
 
 def print_matrix(mat):
@@ -16,13 +12,14 @@ def print_matrix(mat):
 
 
 def count_columns_with_zeros(mat):
-    columns_with_zero = 0
-    for j in range(len(mat[0])):
-        for i in range(len(mat)):
-            if mat[i][j] == 0:
-                columns_with_zero += 1
-                break
-    return columns_with_zero
+    return sum(1 for j in range(len(mat[0])) if 0 in [mat[i][j] for i in range(len(mat))])
+
+
+def update_longest_series(series_length, max_series_length, longest_series_row, i):
+    if series_length > max_series_length:
+        max_series_length = series_length
+        longest_series_row = i + 1
+    return max_series_length, longest_series_row
 
 
 def find_longest_series(mat):
@@ -34,19 +31,14 @@ def find_longest_series(mat):
             if mat[i][j] == mat[i][j - 1]:
                 series_length += 1
             else:
-                if series_length > max_series_length:
-                    max_series_length = series_length
-                    longest_series_row = i + 1
+                max_series_length, longest_series_row = update_longest_series(series_length, max_series_length,
+                                                                              longest_series_row, i)
 
                 series_length = 1
-        if series_length > max_series_length:
-            max_series_length = series_length
-            longest_series_row = i + 1
+        max_series_length, longest_series_row = update_longest_series(series_length, max_series_length,
+                                                                      longest_series_row, i)
 
-    if max_series_length > 1:
-        return longest_series_row
-    else:
-        return 'Element series not found'
+    return longest_series_row if max_series_length > 1 else 'Element series not found'
 
 
 rows = int(input('Enter the number of rows - '))
