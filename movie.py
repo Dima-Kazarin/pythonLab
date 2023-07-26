@@ -39,8 +39,7 @@ class MovieDataPreparation:
         return self.movies
 
     def get_movies_with_indexes(self):
-        movies = self.get_sample_data()
-        return movies[3:20:4]
+        return self.movies[3:20:4]
 
     def get_most_popular_title(self):
         return max(self.movies, key=lambda movie: movie.get('popularity', 0)).get('title', '')
@@ -50,7 +49,7 @@ class MovieDataPreparation:
                 any(keyword.lower() in movie.get('overview', '').lower() for keyword in keywords)]
 
     def get_unique_genres(self):
-        return set(genre['name'] for genre in self.genres)
+        return frozenset(genre['name'] for genre in self.genres)
 
     def remove_movies_by_genre(self, genre):
         genre_ids_to_remove = [g['id'] for g in self.genres if g['name'].lower() == genre.lower()]
@@ -59,15 +58,12 @@ class MovieDataPreparation:
                 not any(genre_id in genre_ids_to_remove for genre_id in movie.get('genre_ids', []))]
 
     def get_popular_genre_counts(self):
-        genre_counts = Counter()
-        for movie in self.movies:
-            genre_ids = movie.get('genre_ids', [])
-            genre_counts.update(genre_ids)
+        genre_counts = Counter(genre_id for movie in self.movies for genre_id in movie.get('genre_ids', []))
+        popular_genre_id, _ = genre_counts.most_common(1)[0]
 
-        popular_genres = [(genre['name'], count) for genre in self.genres for genre_id, count in genre_counts.items() if
-                          genre.get('id') == genre_id]
-        popular_genres.sort(key=lambda x: x[1], reverse=True)
-        return popular_genres
+        for genre in self.genres:
+            if genre.get('id') == popular_genre_id:
+                return genre['name'], genre_counts[popular_genre_id]
 
     def get_movies_grouped_by_genre(self):
         genre_movies = {genre['id']: [] for genre in self.genres}
@@ -77,7 +73,13 @@ class MovieDataPreparation:
             for genre_id in genre_ids:
                 genre_movies[genre_id].append(movie.get('title', ''))
 
-        return list(filter(lambda genre_info: len(genre_info[1]) > 1, genre_movies.items()))
+        grouped_movies = []
+        for _, movies_list in genre_movies.items():
+            while len(movies_list) >= 2:
+                grouped_movies.append((movies_list[:2]))
+                movies_list = movies_list[2:]
+
+        return grouped_movies
 
     def modify_genre_ids(self):
         def modify_movie_genre_ids(movie):
@@ -155,9 +157,9 @@ filtered_movies = movie_data.remove_movies_by_genre(genre_to_remove)
 print(f'Movies after removing the genre "{genre_to_remove}":')
 print(filtered_movies, end='\n\n')
 
-popular_genre_counts = movie_data.get_popular_genre_counts()
-print('Popular genres with their occurrence counts:')
-print(popular_genre_counts, end='\n\n')
+popular_genre, popular_genre_count = movie_data.get_popular_genre_counts()
+print('Popular genre with number of occurrences:')
+print(f'{popular_genre} -', popular_genre_count, end='\n\n')
 
 movies_grouped_by_genre = movie_data.get_movies_grouped_by_genre()
 print('Movies grouped by genre:')
