@@ -37,12 +37,9 @@ def download_csv_file(output_folder, filename):
     :return: The path to the downloaded CSV file
     """
     response = requests.get(URL)
-
     csv_file_path = os.path.join(output_folder, f'{filename}.csv')
-
     with open(csv_file_path, 'w', encoding='utf-8') as csv_file:
         csv_file.write(response.text)
-
     return csv_file_path
 
 
@@ -82,9 +79,7 @@ def add_fields(data):
         offset = timedelta(hours=offset_hours, minutes=offset_minutes)
 
         timezone = pytz.FixedOffset(offset.total_seconds() // 60)
-        current_time = datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')
-
-        row['current_time'] = current_time
+        row['current_time'] = datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def create_folder_structure(data):
@@ -99,34 +94,25 @@ def create_folder_structure(data):
         decade = f'{dob_year // 10}0-th'
         country = row['location.country']
 
-        if decade not in folder_structure:
-            folder_structure.setdefault(decade, {})
-        if country not in folder_structure[decade]:
-            folder_structure[decade].setdefault(country, [])
+        folder_structure.setdefault(decade, {})
+        folder_structure[decade].setdefault(country, [])
 
         folder_structure[decade][country].append(row)
 
     return folder_structure
 
 
-def calculate_max_age(data):
+def calculate_values_from_dates(data, field, format, fnc):
     """
-    Calculates the maximum age from a list of data
-    :param data: A list of dictionaries representing the data containing date of birth information
-    :return: The maximum age calculated from the data
+    Calculates a value based on the specified field from a list of data containing date information
+    :param data: A list of dictionaries representing the data containing date information
+    :param field: The name of the field in the data dictionary representing the date
+    :param format: The format of the date represented in the specified field
+    :param fnc: A function to be applied to the calculated values
+    :return: The calculated value based on the specified field and the provided function
     """
-    dob_dates = [datetime.strptime(row['dob.date'], '%m/%d/%Y') for row in data]
-    return max((datetime.today() - date).days // 365 for date in dob_dates)
-
-
-def calculate_avg_registered_years(data):
-    """
-    Calculates the average number of registered years from a list of data
-    :param data: A list of dictionaries representing the data containing registration date information
-    :return: The average number of registered years
-    """
-    reg_dates = [datetime.strptime(row['registered.date'], '%m-%d-%Y, %H:%M:%S') for row in data]
-    return sum((datetime.today() - date).days // 365 for date in reg_dates) / len(data)
+    dob_dates = [datetime.strptime(row[field], format) for row in data]
+    return fnc((datetime.today() - date).days // 365 for date in dob_dates)
 
 
 def calculate_popular_id(data):
@@ -135,8 +121,7 @@ def calculate_popular_id(data):
     :param data: A list of dictionaries representing the data containing id information
     :return: The most popular id
     """
-    name_counts = Counter(row['id.name'] for row in data)
-    return name_counts.most_common(1)[0][0]
+    return Counter(row['id.name'] for row in data).most_common(1)[0][0]
 
 
 def create_folders(destination_folder, folder_structure):
@@ -147,11 +132,8 @@ def create_folders(destination_folder, folder_structure):
     :return: The updated folder structure dictionary
     """
     for decade, countries in folder_structure.items():
-        decade_folder = os.path.join(destination_folder, decade)
-        os.makedirs(decade_folder, exist_ok=True)
-
         for country in countries:
-            country_folder = os.path.join(decade_folder, country)
+            country_folder = os.path.join(destination_folder, decade, country)
             os.makedirs(country_folder, exist_ok=True)
 
     return folder_structure
@@ -164,13 +146,12 @@ def create_filename(country_folder, users):
     :param users: A list of user objects containing user data
     :return: The generated filename
     """
-    max_age = calculate_max_age(users)
-    avg_registered_years = calculate_avg_registered_years(users)
+    max_age = calculate_values_from_dates(users, 'dob.date', '%m/%d/%Y', max)
+    avg_registered_years = calculate_values_from_dates(users, 'registered.date', '%m-%d-%Y, %H:%M:%S', sum) / len(users)
     popular_id = calculate_popular_id(users)
 
     filename = f'max_age_{max_age}_avg_registered_{avg_registered_years:.2f}_popular_id_{popular_id}.csv'
     file_path = os.path.join(country_folder, filename)
-
     return file_path
 
 
@@ -196,7 +177,6 @@ def store_data_to_files(destination_folder, folder_structure):
     for decade, countries in folder_structure.items():
         for country, users in countries.items():
             country_folder = os.path.join(destination_folder, decade, country)
-
             file_path = create_filename(country_folder, users)
             write_csv_file(file_path, users)
 
@@ -235,7 +215,6 @@ def archive_destination_folder(destination_folder):
     :return: The path to the created zip file
     """
     shutil.make_archive(destination_folder, 'zip', destination_folder)
-
     return f'{destination_folder}.zip'
 
 
