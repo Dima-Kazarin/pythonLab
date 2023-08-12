@@ -28,6 +28,7 @@ pylint:
     - missing-function-docstring
     - logging-too-many-args
     - no-value-for-parameter
+    - too-many-arguments
 
 pydocstyle:
   disable:

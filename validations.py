@@ -9,7 +9,7 @@ def validate_user_full_name(name):
     :param name: The full name to be validated.
     :return: A list containing two parts of the full name.
     """
-    name_parts = re.findall(r'[a-zA-Z]+', name)
+    name_parts = re.findall(r'\w+', name)
     if len(name_parts) != 2:
         raise ValueError('Invalid user_full_name format')
     return name_parts
@@ -24,10 +24,10 @@ def validate_strict_value(field_name, value, allowed_values):
     :param allowed_values: The allowed values for the field.
     """
     if value not in allowed_values:
-        raise ValueError(f'Not allowed value "{value}" for field "{field_name}"!')
+        raise ValueError(f'Not allowed value {value!r} for field "{field_name}"!')
 
 
-def validate_datetime(dt):
+def validate_datetime(dt=None):
     """
     Validates a datetime string or object.
 
