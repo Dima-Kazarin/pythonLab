@@ -8,17 +8,6 @@ from collections import Counter
 import shutil
 import pytz
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-file_handler = logging.FileHandler('logs.log')
-file_handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-
-logger.addHandler(file_handler)
-
 URL = 'https://randomuser.me/api/?results=5000&format=csv'
 
 TITLE_MAPPING = {
@@ -27,6 +16,24 @@ TITLE_MAPPING = {
     'Mr': 'mister',
     'Madame': 'mademoiselle'
 }
+
+
+def get_logging():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    file_handler = logging.FileHandler('logs.log')
+    file_handler.setLevel(logging.INFO)
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+logger = get_logging()
 
 
 def download_csv_file(output_folder, filename):
@@ -124,21 +131,6 @@ def calculate_popular_id(data):
     return Counter(row['id.name'] for row in data).most_common(1)[0][0]
 
 
-def create_folders(destination_folder, folder_structure):
-    """
-    Creates folders based on a nested dictionary representing folder structure
-    :param destination_folder: The path to the destination folder where the folders will be created
-    :param folder_structure: A nested dictionary representing the folder structure
-    :return: The updated folder structure dictionary
-    """
-    for decade, countries in folder_structure.items():
-        for country in countries:
-            country_folder = os.path.join(destination_folder, decade, country)
-            os.makedirs(country_folder, exist_ok=True)
-
-    return folder_structure
-
-
 def create_filename(country_folder, users):
     """
     Creates a filename based on user data statistics
@@ -168,19 +160,25 @@ def write_csv_file(file_path, users):
         writer.writerows(users)
 
 
-def store_data_to_files(destination_folder, folder_structure):
+def create_folders_and_store_data(destination_folder, folder_structure):
     """
-    Stores data into CSV files within corresponding folders
-    :param destination_folder: The path to the destination folder where the CSV files will be stored
+    Creates folders based on a nested dictionary representing folder structure,
+    and stores data into CSV files within corresponding folders.
+    :param destination_folder: The path to the destination folder where the folders and CSV files will be created
     :param folder_structure: A nested dictionary representing the folder structure
+    :return: The updated folder structure dictionary
     """
     for decade, countries in folder_structure.items():
         for country, users in countries.items():
             country_folder = os.path.join(destination_folder, decade, country)
+            os.makedirs(country_folder, exist_ok=True)
+
             file_path = create_filename(country_folder, users)
             write_csv_file(file_path, users)
 
             logger.info(f'Created file: {file_path}')
+
+    return folder_structure
 
 
 def remove_decades_before_1960(destination_folder, folder_structure):
@@ -231,9 +229,7 @@ def parse_arguments():
     gender_rows_group.add_argument('--rows', type=int, help='Number of rows')
     parser.add_argument('--log_level', default='INFO', help='Log level')
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
 def main():
@@ -264,10 +260,8 @@ def main():
     logger.info('Step 8: Creating folders for each decade and country')
     logger.info('Step 9: Creating subfolders for every decade')
     logger.info('Step 10: Creating subfolders for each country inside the decade folders')
-    folder_structure = create_folders(args.destination_folder, folder_structure)
-
     logger.info('Step 11: Storing data to CSV files in corresponding folders')
-    store_data_to_files(args.destination_folder, folder_structure)
+    folder_structure = create_folders_and_store_data(args.destination_folder, folder_structure)
 
     logger.info('Step 12: Removing data before the 1960s')
     remove_decades_before_1960(args.destination_folder, folder_structure)
