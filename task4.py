@@ -37,7 +37,6 @@ def download_csv_file(output_folder, filename):
     :return: The path to the downloaded CSV file
     """
     response = requests.get(URL)
-
     csv_file_path = os.path.join(output_folder, f'{filename}.csv')
 
     with open(csv_file_path, 'w', encoding='utf-8') as csv_file:
@@ -58,7 +57,6 @@ def filter_data(csv_file, gender, rows):
         reader = csv.DictReader(csv_file)
         filtered_data = []
         rows_read = 0
-
         for row in reader:
             if (not gender or row['gender'].lower() == gender.lower()) and (not rows or rows_read < rows):
                 filtered_data.append(row)
