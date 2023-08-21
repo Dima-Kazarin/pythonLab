@@ -6,26 +6,41 @@ from task4 import download_csv_file, filter_data, add_fields, create_folder_stru
     remove_decades_before_1960
 
 TMP_DIR = 'test'
+TEST_USER_2 = {'name': 'Jane Doe', 'gender': 'F', 'dob.date': '1995-05-05T00:00:00.000Z',
+               'registered.date': '2021-05-05T00:00:00.000Z'}
+
+TEST_USER_1 = {'name': 'John Doe', 'gender': 'M', 'dob.date': '1990-01-01T00:00:00.000Z',
+               'registered.date': '2020-01-01T00:00:00.000Z'}
 
 
 @pytest.fixture
-def csv_file_path():
+def user_1_str_and_user_2_str():
+    user_1_str = ','.join(TEST_USER_1.values())
+    user_2_str = ','.join(TEST_USER_2.values())
+    return user_1_str, user_2_str
+
+
+@pytest.fixture
+def header():
+    return ','.join(TEST_USER_2.keys())
+
+
+@pytest.fixture
+def csv_file_path(user_1_str_and_user_2_str, header):
     csv_file_path = r'test\test_file.csv'
 
+    user_1, user_2 = user_1_str_and_user_2_str
     with patch('builtins.open', new_callable=mock_open,
-               read_data=('name,gender,dob.date,registered.date\n'
-                          'John Doe,M,1990-01-01T00:00:00.000Z,2020-01-01T00:00:00.000Z\n'
-                          'Jane Doe,F,1995-05-05T00:00:00.000Z,2021-05-05T00:00:00.000Z')):
+               read_data=f'{header}\n{user_1}\n{user_2}'):
         yield csv_file_path
 
 
-@patch('task4.requests.get')
+@patch('task4.get')
 @patch('builtins.open', new_callable=mock_open)
-def test_download_csv_file(mock_f, mock_open_func):
+def test_download_csv_file(mock_f, mock_open_func, user_1_str_and_user_2_str, header):
     response_mock = MagicMock()
-    response_mock.text = 'name,gender,dob.date,registered.date\n' \
-                         'John Doe,M,1990-01-01T00:00:00.000Z,' \
-                         '2020-01-01T00:00:00.000Z'
+    user_1, _ = user_1_str_and_user_2_str
+    response_mock.text = f'{header}\n{user_1}'
     mock_f.return_value = response_mock
 
     filename = 'test_file'
@@ -38,10 +53,8 @@ def test_download_csv_file(mock_f, mock_open_func):
 
 @pytest.mark.parametrize('gender, rows, expected',
                          [
-                             ('F', None, [{'name': 'Jane Doe', 'gender': 'F', 'dob.date': '1995-05-05T00:00:00.000Z',
-                                           'registered.date': '2021-05-05T00:00:00.000Z'}]),
-                             (None, 1, [{'name': 'John Doe', 'gender': 'M', 'dob.date': '1990-01-01T00:00:00.000Z',
-                                         'registered.date': '2020-01-01T00:00:00.000Z'}])
+                             ('F', None, [TEST_USER_2]),
+                             (None, 1, [TEST_USER_1])
                          ])
 def test_filter_data(csv_file_path, gender, rows, expected):
     filtered_data = filter_data(csv_file_path, gender=gender, rows=rows)
@@ -93,4 +106,4 @@ def test_remove_decades_before_1960(mock_f):
     expected = {'1960-th': {}}
 
     assert folder_structure == expected
-    assert mock_f.call_count == 1
+    mock_f.assert_called_once_with(r'test\1950-th')

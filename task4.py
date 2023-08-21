@@ -1,12 +1,12 @@
-import os
-import csv
-import requests
+from os import path, makedirs, replace, walk
+from csv import DictReader, DictWriter
+from requests import get
 import logging
-import argparse
+from argparse import ArgumentParser
 from datetime import datetime, timedelta
 from collections import Counter
-import shutil
-import pytz
+from shutil import rmtree, make_archive
+from pytz import FixedOffset
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -36,8 +36,8 @@ def download_csv_file(output_folder, filename):
     :param filename: The desired filename (without the extension) for the downloaded CSV file
     :return: The path to the downloaded CSV file
     """
-    response = requests.get(URL)
-    csv_file_path = os.path.join(output_folder, f'{filename}.csv')
+    response = get(URL)
+    csv_file_path = path.join(output_folder, f'{filename}.csv')
 
     with open(csv_file_path, 'w', encoding='utf-8') as csv_file:
         csv_file.write(response.text)
@@ -54,7 +54,7 @@ def filter_data(csv_file, gender, rows):
     :return: A list of dictionaries representing the filtered data
     """
     with open(csv_file, 'r', encoding='utf-8') as csv_file:
-        reader = csv.DictReader(csv_file)
+        reader = DictReader(csv_file)
         filtered_data = []
         rows_read = 0
         for row in reader:
@@ -85,7 +85,7 @@ def add_fields(data):
         offset_hours, offset_minutes = map(int, offset_str.split(':'))
         offset = timedelta(hours=offset_hours, minutes=offset_minutes)
 
-        timezone = pytz.FixedOffset(offset.total_seconds() // 60)
+        timezone = FixedOffset(offset.total_seconds() // 60)
         current_time = datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S')
 
         row['current_time'] = current_time
@@ -151,12 +151,12 @@ def create_folders(destination_folder, folder_structure):
     :return: The updated folder structure dictionary
     """
     for decade, countries in folder_structure.items():
-        decade_folder = os.path.join(destination_folder, decade)
-        os.makedirs(decade_folder, exist_ok=True)
+        decade_folder = path.join(destination_folder, decade)
+        makedirs(decade_folder, exist_ok=True)
 
         for country in countries:
-            country_folder = os.path.join(decade_folder, country)
-            os.makedirs(country_folder, exist_ok=True)
+            country_folder = path.join(decade_folder, country)
+            makedirs(country_folder, exist_ok=True)
 
     return folder_structure
 
@@ -173,7 +173,7 @@ def create_filename(country_folder, users):
     popular_id = calculate_popular_id(users)
 
     filename = f'max_age_{max_age}_avg_registered_{avg_registered_years:.2f}_popular_id_{popular_id}.csv'
-    file_path = os.path.join(country_folder, filename)
+    file_path = path.join(country_folder, filename)
 
     return file_path
 
@@ -186,7 +186,7 @@ def write_csv_file(file_path, users):
     """
     with open(file_path, 'w', newline='', encoding='utf-8') as csv_file:
         fieldnames = users[0].keys()
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer = DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(users)
 
@@ -199,7 +199,7 @@ def store_data_to_files(destination_folder, folder_structure):
     """
     for decade, countries in folder_structure.items():
         for country, users in countries.items():
-            country_folder = os.path.join(destination_folder, decade, country)
+            country_folder = path.join(destination_folder, decade, country)
 
             file_path = create_filename(country_folder, users)
             write_csv_file(file_path, users)
@@ -216,9 +216,9 @@ def remove_decades_before_1960(destination_folder, folder_structure):
     decades_to_remove = [decade for decade in folder_structure.keys() if int(decade.split('-')[0]) < 1960]
 
     for decade in decades_to_remove:
-        decade_folder = os.path.join(destination_folder, decade)
+        decade_folder = path.join(destination_folder, decade)
         del folder_structure[decade]
-        shutil.rmtree(decade_folder)
+        rmtree(decade_folder)
 
 
 def log_structure_folder(destination_folder):
@@ -226,8 +226,8 @@ def log_structure_folder(destination_folder):
     Logs the folder structure
     :param destination_folder: The path to the destination folder whose structure will be logged
     """
-    for foldername, subfolders, filenames in os.walk(destination_folder):
-        logger.info(f'Folder: {os.path.relpath(foldername, destination_folder)}')
+    for foldername, subfolders, filenames in walk(destination_folder):
+        logger.info(f'Folder: {path.relpath(foldername, destination_folder)}')
         for filename in filenames:
             logger.info(f'\t- File: {filename}')
 
@@ -238,7 +238,7 @@ def archive_destination_folder(destination_folder):
     :param destination_folder: The path to the destination folder to be archived
     :return: The path to the created zip file
     """
-    shutil.make_archive(destination_folder, 'zip', destination_folder)
+    make_archive(destination_folder, 'zip', destination_folder)
 
     return f'{destination_folder}.zip'
 
@@ -248,7 +248,7 @@ def parse_arguments():
     Parse command-line arguments for a script
     :return: An object containing the parsed command-line arguments
     """
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     parser.add_argument('destination_folder', help='Path to the output folder')
     parser.add_argument('--filename', default='output', help='The filename')
     gender_rows_group = parser.add_mutually_exclusive_group()
@@ -280,11 +280,11 @@ def main():
     folder_structure = create_folder_structure(filtered_data)
 
     logger.info('Step 6: Creating the destination folder')
-    os.makedirs(args.destination_folder, exist_ok=True)
+    makedirs(args.destination_folder, exist_ok=True)
 
     logger.info('Step 7: Moving the initial file to the destination folder')
-    initial_file_path = os.path.join(args.destination_folder, f'{args.filename}.csv')
-    os.replace(csv_file_path, initial_file_path)
+    initial_file_path = path.join(args.destination_folder, f'{args.filename}.csv')
+    replace(csv_file_path, initial_file_path)
 
     logger.info('Step 8: Creating folders for each decade and country')
     logger.info('Step 9: Creating subfolders for every decade')
