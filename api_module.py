@@ -4,7 +4,7 @@ import requests
 
 from decorator import db_connection
 from validations import validate_datetime
-from table_manipulation import delete_user, delete_account, parse_user_full_name
+from table_manipulation import delete_user, delete_account
 
 API = 'fca_live_OryVkPmOTHgVAjh3h5DhFFuUQc3QrUxLUAF7TPJA'
 SELECT_BY_ID = 'SELECT {} FROM {} WHERE id = ?'
@@ -95,42 +95,6 @@ def conversion_accounts(cursor, sender_account_id, receiver_account_id, amount):
     return sender_balance, sender_currency, amount_in_receiver_currency
 
 
-def perform_money_transfer(cursor, sender_balance, amount,
-                           sender_account_id, amount_in_receiver_currency,
-                           receiver_account_id, sender_currency):
-    """
-    Perform a money transfer between two accounts with currency conversion.
-
-    :param cursor: A database cursor for executing SQL queries.
-    :param sender_balance: Current balance of the sender's account.
-    :param amount: The amount to be transferred from sender to receiver.
-    :param sender_account_id: The ID of the sender's account.
-    :param amount_in_receiver_currency:
-    The amount to be credited to the receiver's account after currency conversion.
-    :param receiver_account_id: The ID of the receiver's account.
-    :param sender_currency: The currency of the sender's account.
-    :return: A success message if the transfer is successful, otherwise an error message.
-    """
-    if sender_balance >= amount:
-        cursor.execute(UPDATE_ACCOUNT_BY_ID.format('-'),
-                       (amount, sender_account_id))
-        cursor.execute(UPDATE_ACCOUNT_BY_ID.format('+'),
-                       (amount_in_receiver_currency, receiver_account_id))
-
-        bank_sender_name = get_bank_name(sender_account_id)
-        bank_receiver_name = get_bank_name(receiver_account_id)
-        date_time = validate_datetime()
-        cursor.execute('INSERT INTO Transact (Bank_sender_name, Account_sender_id, '
-                       'Bank_receiver_name, Account_receiver_id, '
-                       'Sent_Currency, Sent_Amount, Datetime) '
-                       'VALUES(?, ?, ?, ?, ?, ?, ?)',
-                       (bank_sender_name, sender_account_id, bank_receiver_name,
-                        receiver_account_id, sender_currency, amount, date_time))
-        return 'Money transferred successfully'
-
-    return "Error: Sender's balance is not sufficient to perform the transaction"
-
-
 @db_connection
 def transfer_money(cursor, sender_account_id, receiver_account_id, amount):
     """
@@ -146,9 +110,25 @@ def transfer_money(cursor, sender_account_id, receiver_account_id, amount):
     sender_balance, sender_currency, amount_in_receiver_currency = \
         conversion_accounts(cursor, sender_account_id, receiver_account_id, amount)
 
-    return perform_money_transfer(cursor, sender_balance, amount,
-                                  sender_account_id, amount_in_receiver_currency,
-                                  receiver_account_id, sender_currency)
+    if sender_balance >= amount:
+        cursor.execute(UPDATE_ACCOUNT_BY_ID.format('-'),
+                       (amount, sender_account_id))
+        cursor.execute(UPDATE_ACCOUNT_BY_ID.format('+'),
+                       (amount_in_receiver_currency, receiver_account_id))
+
+        bank_sender_name = get_bank_name(sender_account_id)
+        bank_receiver_name = get_bank_name(receiver_account_id)
+        date_time = validate_datetime()
+        cursor.execute('INSERT INTO Transact (Bank_sender_name, Account_sender_id, '
+                       'Bank_receiver_name, Account_receiver_id, '
+                       'Sent_Currency, Sent_Amount, Datetime) '
+                       'VALUES(?, ?, ?, ?, ?, ?, ?)',
+                       (bank_sender_name, sender_account_id, bank_receiver_name,
+                        receiver_account_id, sender_currency, amount, date_time))
+
+        return 'Money transferred successfully'
+
+    return "Error: Sender's balance is not sufficient to perform the transaction"
 
 
 @db_connection
@@ -163,12 +143,9 @@ def assign_random_discounts(cursor):
     user_ids = [row[0] for row in cursor.fetchall()]
     num_users_to_choose = min(10, len(user_ids))
     chosen_user_ids = random.sample(user_ids, num_users_to_choose)
-    user_discounts = {}
-    for user_id in chosen_user_ids:
-        discount = random.choice(DISCOUNTS)
-        user_discounts[user_id] = discount
+    user_ids_with_discounts = {user_id: random.choice(DISCOUNTS) for user_id in chosen_user_ids}
 
-    return user_discounts
+    return user_ids_with_discounts
 
 
 @db_connection
@@ -181,11 +158,13 @@ def get_users_with_debts(cursor):
     """
     cursor.execute('SELECT User_id FROM Account WHERE Amount < 0')
     users_with_debts = cursor.fetchall()
+    print(users_with_debts)
     full_names = []
     for user_data in users_with_debts:
         user_id = user_data[0]
         cursor.execute(SELECT_BY_ID.format('Name, Surname', 'User'), (user_id,))
         user_name = cursor.fetchall()
+        print(user_name)
         full_names = [' '.join(name) for name in user_name]
 
     return full_names
@@ -201,8 +180,7 @@ def get_bank_with_largest_capital(cursor):
     """
     cursor.execute('SELECT Bank_id, Amount FROM Account')
     acc = cursor.fetchall()
-    banks = {}
-    banks = {user[0]: banks.get(user[0], 0) + user[1] for user in acc}
+    banks = {user[0]: user[0] + user[1] for user in acc}
 
     b_id = max(banks, key=banks.get)
     cursor.execute(SELECT_BY_ID.format('name', 'Bank'), (b_id,))
@@ -242,8 +220,8 @@ def get_bank_with_highest_outbound_users(cursor):
     for bank_name, account_id in cursor.fetchall():
         cursor.execute(SELECT_BY_ID.format('User_id', 'Account'), (account_id,))
         (user_id) = cursor.fetchone()
-
-        banks_users_count[bank_name] = banks_users_count.get(bank_name, set())
+        print(user_id)
+        banks_users_count.setdefault(bank_name, set())
         banks_users_count[bank_name].add(user_id)
 
     bank_with_highest_users = max(banks_users_count,
@@ -261,10 +239,10 @@ def delete_users(cursor):
     """
     cursor.execute('SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL '
                    'OR Birth_day IS NULL')
+
     user_ids_with_missing_info = [row[0] for row in cursor.fetchall()]
 
-    for user_id in user_ids_with_missing_info:
-        delete_user(user_id)
+    list(map(delete_user, user_ids_with_missing_info))
 
 
 def delete_accounts(cursor):
@@ -278,8 +256,7 @@ def delete_accounts(cursor):
                    'Currency IS NULL OR Amount IS NULL OR Status IS NULL ')
     account_ids_with_missing_info = [row[0] for row in cursor.fetchall()]
 
-    for account_id in account_ids_with_missing_info:
-        delete_account(account_id)
+    list(map(delete_account, account_ids_with_missing_info))
 
 
 @db_connection
@@ -305,15 +282,14 @@ def get_user_transactions_last_3_months(cursor, user_full_name):
     :param user_full_name: The full name of the user who have the transactions.
     :return: A list with user transactions.
     """
-    name, surname = parse_user_full_name(user_full_name)
+    name, surname = user_full_name.strip().split()
     cursor.execute('SELECT id FROM User WHERE Name = ? AND Surname = ?', (name, surname))
     user_id = cursor.fetchone()
     check_availability(user_id, 'User not found')
 
-    user_id = user_id[0]
     three_months = datetime.now() - timedelta(days=90)
 
     cursor.execute('SELECT * FROM Transact WHERE Account_sender_id = ? '
                    'OR Account_receiver_id = ? '
-                   'AND DATETIME >= ?', (user_id, user_id, three_months))
+                   'AND DATETIME >= ?', (user_id[0], user_id[0], three_months))
     return cursor.fetchall()

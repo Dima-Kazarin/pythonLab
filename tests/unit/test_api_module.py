@@ -1,151 +1,184 @@
-import sqlite3
-from api_module import (get_currency_conversion_rate,
-                        delete_users_and_accounts_with_missing_info, get_users_with_debts,
-                        get_bank_with_highest_outbound_users,
-                        get_bank_with_oldest_client, get_bank_with_largest_capital, get_user_transactions_last_3_months,
-                        transfer_money, get_bank_name, assign_random_discounts)
+from unittest.mock import MagicMock, patch, call
 
-from test_table_manipulation import (setup_database, create_users, create_banks,
-                                     create_accounts, add_accounts, add_users)
-
-
-def create_transaction():
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO Transact (Bank_sender_name, Account_sender_id, '
-                   'Bank_receiver_name, Account_receiver_id, Sent_Currency, Sent_Amount, Datetime) '
-                   'VALUES (?, ?, ?, ?, ?, ?, ?)', ('Bank1', 1, 'Bank2', 2, 'USD', 100, '2020-01-01'))
-    conn.commit()
-    conn.close()
+from api_module import (get_users_with_debts, assign_random_discounts, get_bank_with_highest_outbound_users,
+                        conversion_accounts, get_currency_and_amount, get_bank_name,
+                        get_bank_with_largest_capital, get_bank_with_oldest_client,
+                        get_user_transactions_last_3_months, delete_users, delete_accounts,
+                        delete_users_and_accounts_with_missing_info, get_currency_conversion_rate,
+                        transfer_money, check_availability)
 
 
 def test_get_bank_name():
-    setup_database()
-
-    create_accounts()
-    create_banks()
+    cursor = MagicMock()
 
     acc_id = 1
-    actual = get_bank_name(acc_id)
+    cursor.fetchone.return_value = ('Bank',)
+    actual = get_bank_name.__wrapped__(cursor, acc_id)
 
-    assert actual == 'Bank1'
+    assert actual == 'Bank'
 
 
-def test_get_currency_conversion_rate():
+@patch('api_module.requests.get')
+def test_get_currency_conversion_rate(mock_f):
     from_cur = 'USD'
     to_cur = 'EUR'
+    mock_json = MagicMock(return_value={'data': {'EUR': 0.91}})
+    mock_f.return_value.json = mock_json
 
     actual = get_currency_conversion_rate(from_cur, to_cur)
 
     assert 0.9 < actual < 1
 
 
-def test_transfer_money():
-    setup_database()
+def test_get_currency_and_amount():
+    cursor = MagicMock()
+    id = 1
+    get_currency_and_amount(cursor, id)
 
-    create_accounts()
-    create_banks()
+    cursor.execute.assert_called_once_with('SELECT Currency, Amount FROM Account WHERE id = ?', (id,))
+
+
+def test_check_availability():
+    field = None
+    error_message = 'Error'
+
+    actual = check_availability(field, error_message)
+
+    assert actual == 'Error'
+
+
+@patch('api_module.get_currency_and_amount')
+@patch('api_module.check_availability')
+def test_conversion_accounts(mock_f, mock_c):
+    cursor = MagicMock()
+    mock_c.return_value = ('USD', 900)
+    mock_f.return_value = None
+
+    actual = conversion_accounts(cursor, 1, 2, 100)
+
+    assert actual == (900, 'USD', 100)
+
+
+@patch('api_module.conversion_accounts')
+@patch('api_module.get_bank_name')
+@patch('validations.validate_datetime')
+def test_transfer_money(mock_dt, mock_bn, mock_f):
+    cursor = MagicMock()
 
     sender_acc_id = 1
     receiver_account_id = 2
     amount = 200
+    mock_dt.return_value = '2023-08-22 11:51:01'
+    mock_bn.side_effect = ['Bank1', 'Bank2']
 
-    actual = transfer_money(sender_acc_id, receiver_account_id, amount)
-
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT Amount FROM Account')
-    account = cursor.fetchall()
-    conn.close()
+    cursor.execute.side_effect = [None, None, None]
+    mock_f.return_value = 200, 'USD', 200
+    actual = transfer_money.__wrapped__(cursor, sender_acc_id, receiver_account_id, amount)
 
     assert actual == 'Money transferred successfully'
-    assert account[0] == (2300.0,)
-    assert account[1] == (1200.0,)
+    cursor.execute.assert_has_calls([call('UPDATE Account SET Amount = Amount - ? WHERE id = ?', (200, 1)),
+                                     call('UPDATE Account SET Amount = Amount + ? WHERE id = ?', (200, 2)), ])
 
 
-def test_assign_random_discounts():
-    actual = assign_random_discounts()
-    valid_discounts = [25, 30, 50]
+@patch('api_module.random.sample')
+@patch('api_module.random.choice')
+def test_assign_random_discounts(mock_random_sample, mock_random_choice):
+    cursor = MagicMock()
+    user_ids = [1, 2, 3, 4, 5]
+    chosen_user_ids = [1, 3]
 
-    for discount in actual.values():
-        assert discount in valid_discounts
-    assert len(actual) <= 10
+    cursor.execute.return_value = user_ids
+    mock_random_sample.side_effect = [25, 50]
+    mock_random_choice.return_value = chosen_user_ids
+
+    actual = assign_random_discounts.__wrapped__(cursor)
+
+    assert actual == {1: 25, 3: 50}
 
 
 def test_get_users_with_debts():
-    setup_database()
+    cursor = MagicMock()
 
-    add_accounts((1, 'credit', '123456789', 1, 'USD', -1000.0, 'gold'))
-    create_users()
+    cursor.fetchall.side_effect = [[(1,)], [('Jo', 'aa')]]
+    actual = get_users_with_debts.__wrapped__(cursor)
 
-    actual = get_users_with_debts()
-
-    assert actual == ['John Do']
+    assert actual == ['Jo aa']
 
 
 def test_bank_with_largest_capital():
-    setup_database()
+    cursor = MagicMock()
 
-    create_accounts()
-    create_banks()
+    cursor.fetchall.return_value = [(1, 100)]
+    cursor.fetchone.return_value = ('Bank',)
 
-    actual = get_bank_with_largest_capital()
-    assert actual == 'Bank which operates the biggest capital - Bank1'
+    actual = get_bank_with_largest_capital.__wrapped__(cursor)
+    assert actual == 'Bank which operates the biggest capital - Bank'
 
 
-def test_get_bank_with_oldest_client():
-    setup_database()
+@patch('api_module.get_bank_name')
+def test_get_bank_with_oldest_client(mock_f):
+    cursor = MagicMock()
 
-    create_users()
-    create_accounts()
-    create_banks()
+    cursor.fetchall.return_value = [('1990-01-01',), ('2000-01-01',)]
+    cursor.fetchone.return_value = ('Bank',)
+    mock_f.return_value = 'Bank'
 
-    actual = get_bank_with_oldest_client()
+    actual = get_bank_with_oldest_client.__wrapped__(cursor)
 
-    assert actual == 'Bank which serves the oldest client - Bank2'
+    assert actual == 'Bank which serves the oldest client - Bank'
 
 
 def test_get_bank_with_highest_outbound_users():
-    setup_database()
+    cursor = MagicMock()
 
-    create_users()
-    create_accounts()
-    create_banks()
-    create_transaction()
+    cursor.fetchall.return_value = [('Bank1', 1), ('Bank2', 2)]
+    cursor.fetchone.side_effect = [(1,), (2,)]
 
-    actual = get_bank_with_highest_outbound_users()
+    actual = get_bank_with_highest_outbound_users.__wrapped__(cursor)
 
     assert actual == 'Bank with the highest users which performed outbound transactions - Bank1'
 
 
-def test_delete_users_and_accounts_with_missing_info():
-    setup_database()
+@patch('table_manipulation.delete_user')
+def test_delete_users(mock_f):
+    cursor = MagicMock()
 
-    add_users(('John Do', None, 'acc1'))
-    add_accounts((1, 'credit', '123456789', 1, 'USD', 2500.0, None))
+    cursor.fetchall.return_value = [(1,), (2,)]
+    delete_users(cursor)
 
-    actual = delete_users_and_accounts_with_missing_info()
+    cursor.execute.assert_called_once_with \
+        ('SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL OR Birth_day IS NULL')
 
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM User WHERE id = 1')
-    user = cursor.fetchone()
 
-    cursor.execute('SELECT * FROM Account WHERE id = 1')
-    account = cursor.fetchone()
-    conn.close()
+@patch('table_manipulation.delete_account')
+def test_delete_accounts(mock_f):
+    cursor = MagicMock()
+
+    cursor.fetchall.return_value = [(1,), (2,)]
+    delete_accounts(cursor)
+
+    cursor.execute.assert_called_once_with('SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL '
+                                           'OR Account_Number IS NULL OR Bank_id IS NULL OR '
+                                           'Currency IS NULL OR Amount IS NULL OR Status IS NULL ')
+
+
+@patch('api_module.delete_accounts')
+@patch('api_module.delete_users')
+def test_delete_users_and_accounts_with_missing_info(mock_user, mock_acc):
+    cursor = MagicMock()
+
+    actual = delete_users_and_accounts_with_missing_info.__wrapped__(cursor)
 
     assert actual == 'Users and Accounts with missing information deleted successfully'
-    assert user is None
-    assert account is None
 
 
-def test_get_user_transactions_last_3_months():
-    setup_database()
+@patch('api_module.check_availability')
+def test_get_user_transactions_last_3_months(mock_f):
+    cursor = MagicMock()
+    name = 'aa aa'
 
-    create_users()
-    create_transaction()
+    cursor.fetchone.return_value = (1,)
+    cursor.fetchall.return_value = [(3, 'b', 1, 'ba', 2, 'USD', 100.0, '2023-08-22 11:51:01')]
+    actual = get_user_transactions_last_3_months.__wrapped__(cursor, name)
 
-    actual = get_user_transactions_last_3_months('John Do')
-
-    assert actual == [(1, 'Bank1', 1, 'Bank2', 2, 'USD', 100.0, '2020-01-01')]
+    assert actual == [(3, 'b', 1, 'ba', 2, 'USD', 100.0, '2023-08-22 11:51:01')]

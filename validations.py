@@ -2,17 +2,21 @@ import re
 from datetime import datetime
 
 
-def validate_user_full_name(name):
+def validate_user(data):
     """
     Validates the full name of a user.
 
-    :param name: The full name to be validated.
+    :param data: The full name to be validated.
     :return: A list containing two parts of the full name.
     """
-    name_parts = re.findall(r'\w+', name)
+    parts = data[0][0] if isinstance(data, list) else data[0]
+    end = data[0][1:] if isinstance(data, list) else data[1:]
+
+    name_parts = re.findall(r'\w+', parts)
     if len(name_parts) != 2:
         raise ValueError('Invalid user_full_name format')
-    return name_parts
+
+    return [*parts.strip().split(), *end]
 
 
 def validate_strict_value(field_name, value, allowed_values):
@@ -39,13 +43,14 @@ def validate_datetime(dt=None):
     return dt
 
 
-def validate_account_number(account_number):
+def validate_account_number(data):
     """
     Validates an account number with a specific format.
 
-    :param account_number: The account number to be validated.
+    :param data: The account number to be validated.
     :return: The validated account number.
     """
+    account_number = data[2]
     account_number = re.sub(r'[#%_?&]', '-', account_number)
     if len(account_number) != 18:
         raise ValueError('Invalid account number length. It should be a string of 18 characters')
@@ -56,4 +61,4 @@ def validate_account_number(account_number):
             'followed by 1 to 3 letters, a dash, '
             'one or more digits, and another dash')
 
-    return account_number
+    return data

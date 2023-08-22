@@ -1,4 +1,5 @@
 import sqlite3
+from functools import wraps
 
 from logger import get_logger
 
@@ -12,7 +13,7 @@ def db_connection(func):
     :param func: The function being decorated, expected to have the cursor as its first argument.
     :return: The wrapped function with established database connection.
     """
-
+    @wraps(func)
     def wrapper(*args, **kwargs):
         conn = sqlite3.connect('database.db')
         cursor = conn.cursor()

@@ -1,29 +1,17 @@
-import csv
+from csv import reader
 
 from decorator import db_connection
+from validations import validate_account_number, validate_user
 
 
-def parse_user_full_name(full_name):
-    """
-    Parse a full name into first name and surname.
-
-    :param full_name:The full name to be parsed.
-    :return:The first name and surname.
-    """
-    name, surname = full_name.strip().split(maxsplit=1)
-    return name, surname
-
-
-def add_users_base(cursor, *args):
+def add_data_base(cursor, *args, fnc=None, table, cols):
     data = args[0] if isinstance(args[0], list) else args
     for user_data in data:
-        full_name, birth_day, accounts = user_data[0]
-        name, surname = parse_user_full_name(full_name)
-        cursor.execute('INSERT INTO User (Name, Surname, Birth_day, Accounts) '
-                       'VALUES (?, ?, ?, ?)',
-                       (name, surname, birth_day, accounts))
+        user_data = fnc(user_data[0]) if fnc else user_data[0]
+        placeholders = ','.join(['?'] * len(user_data))
+        cursor.execute(f'INSERT INTO {table} {cols} VALUES ({placeholders})', user_data)
 
-    return 'Users added successfully'
+    return 'Data added successfully'
 
 
 @db_connection
@@ -35,14 +23,8 @@ def add_users(cursor, *args):
     :param args: Any number of user data tuples or a list of user data tuples.
     :return: A success message if users are added successfully.
     """
-    return add_users_base(cursor, args)
-
-
-def add_banks_base(cursor, *args):
-    data = args[0] if isinstance(args[0], list) else args
-    for bank_data in data:
-        cursor.execute('INSERT INTO Bank (name) VALUES (?)', bank_data)
-    return 'Banks added successfully'
+    return add_data_base(cursor, args, fnc=validate_user,
+                         table='User', cols='(Name, Surname, Birth_day, Accounts)')
 
 
 @db_connection
@@ -54,21 +36,7 @@ def add_banks(cursor, *args):
     :param args: Any number of bank data tuples or a list of bank data tuples.
     :return: A success message if banks are added successfully.
     """
-    return add_banks_base(cursor, args)
-
-
-def add_accounts_base(cursor, *args):
-    data = args[0] if isinstance(args[0], list) else args
-    for account_data in data:
-        user_id, account_type, account_number, bank_id, \
-            currency, amount, status = account_data[0]
-        cursor.execute('INSERT INTO Account '
-                       '(User_id, Type, Account_Number, Bank_id, '
-                       'Currency, Amount, Status)'
-                       'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                       (user_id, account_type, account_number,
-                        bank_id, currency, amount, status))
-    return 'Accounts added successfully'
+    return add_data_base(cursor, args, table='Bank', cols='(name)')
 
 
 @db_connection
@@ -80,18 +48,20 @@ def add_accounts(cursor, *args):
     :param args: Any number of account data tuples or a list of account data tuples.
     :return: A success message if accounts are added successfully.
     """
-    return add_accounts_base(cursor, args)
+    return add_data_base(cursor, args, fnc=validate_account_number, table='Account',
+                         cols='(User_id, Type, Account_Number, Bank_id, Currency, Amount, Status)')
 
 
-def read_csv_file(file_path):
+def read_csv_file(file_path, fnc):
     """
     Read data from a CSV file.
 
+    :param fnc:
     :param file_path: The path of the CSV file to read.
     :return: A list of dictionaries representing the data from the CSV file.
     """
     with open(file_path, 'r', encoding='utf-8') as csvfile:
-        return list(csv.reader(csvfile))
+        return fnc(list(reader(csvfile)))
 
 
 def modify_base(cursor, user_id, field, mod_field, table):
