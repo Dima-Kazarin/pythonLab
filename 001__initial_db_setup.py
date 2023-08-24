@@ -26,14 +26,14 @@ def create_tables(unique_by_fields=False):
                             )
                         ''')
 
-    db_cursor.execute('''
+    db_cursor.execute(f'''
                         CREATE TABLE IF NOT EXISTS User (
                             id INTEGER PRIMARY KEY,
                             Name TEXT NOT NULL,
                             Surname TEXT NOT NULL,
                             Birth_day TEXT,
                             Accounts TEXT NOT NULL
-                            ''' + (', UNIQUE (Name, Surname)' if unique_by_fields else '') + '''
+                            {(', UNIQUE (Name, Surname)' if unique_by_fields else '')}
                         )
                         ''')
 

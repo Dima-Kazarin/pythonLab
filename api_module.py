@@ -8,6 +8,7 @@ from table_manipulation import delete_user, delete_account
 
 API = 'fca_live_OryVkPmOTHgVAjh3h5DhFFuUQc3QrUxLUAF7TPJA'
 SELECT_BY_ID = 'SELECT {} FROM {} WHERE id = ?'
+SELECT_FROM_TABLE = 'SELECT {} FROM {}'
 
 UPDATE_ACCOUNT_BY_ID = 'UPDATE Account SET Amount = Amount {} ? WHERE id = ?'
 DISCOUNTS = (25, 30, 50)
@@ -52,7 +53,7 @@ def get_currency_and_amount(cursor, acc_id):
     :param acc_id: The ID of the account for which to fetch currency and amount.
     :return: A tuple containing the currency and amount (if available) associated with the account.
     """
-    cursor.execute('SELECT Currency, Amount FROM Account WHERE id = ?', (acc_id,))
+    cursor.execute(SELECT_BY_ID.format('Currency, Amount', 'Account'), (acc_id,))
     return cursor.fetchone()
 
 
@@ -64,9 +65,7 @@ def check_availability(field, error_message):
     :param error_message: The error message to be logged if the field is not available.
     :return: The error message if the field is not available, otherwise None.
     """
-    if not field:
-        return error_message
-    return None
+    return error_message if not field else None
 
 
 def conversion_accounts(cursor, sender_account_id, receiver_account_id, amount):
@@ -95,21 +94,8 @@ def conversion_accounts(cursor, sender_account_id, receiver_account_id, amount):
     return sender_balance, sender_currency, amount_in_receiver_currency
 
 
-@db_connection
-def transfer_money(cursor, sender_account_id, receiver_account_id, amount):
-    """
-    Transfer money from the sender's account to the receiver's account.
-
-    :param cursor: The database cursor object to execute SQL commands.
-    :param sender_account_id: The ID of the sender's account.
-    :param receiver_account_id: The ID of the receiver's account.
-    :param amount:
-    The amount to be transferred from the sender's account to the receiver's account.
-    :return: A string indicating the result of the money transfer operation.
-    """
-    sender_balance, sender_currency, amount_in_receiver_currency = \
-        conversion_accounts(cursor, sender_account_id, receiver_account_id, amount)
-
+def perform_money_transfer(cursor, sender_balance, amount, sender_currency,
+                           sender_account_id, amount_in_receiver_currency, receiver_account_id):
     if sender_balance >= amount:
         cursor.execute(UPDATE_ACCOUNT_BY_ID.format('-'),
                        (amount, sender_account_id))
@@ -132,6 +118,25 @@ def transfer_money(cursor, sender_account_id, receiver_account_id, amount):
 
 
 @db_connection
+def transfer_money(cursor, sender_account_id, receiver_account_id, amount):
+    """
+    Transfer money from the sender's account to the receiver's account.
+
+    :param cursor: The database cursor object to execute SQL commands.
+    :param sender_account_id: The ID of the sender's account.
+    :param receiver_account_id: The ID of the receiver's account.
+    :param amount:
+    The amount to be transferred from the sender's account to the receiver's account.
+    :return: A string indicating the result of the money transfer operation.
+    """
+    sender_balance, sender_currency, amount_in_receiver_currency = \
+        conversion_accounts(cursor, sender_account_id, receiver_account_id, amount)
+
+    perform_money_transfer(cursor, sender_balance, amount, sender_currency, sender_account_id,
+                           amount_in_receiver_currency, receiver_account_id)
+
+
+@db_connection
 def assign_random_discounts(cursor):
     """
     Assign random discounts to a subset of users in the database.
@@ -139,9 +144,9 @@ def assign_random_discounts(cursor):
     :param cursor: The database cursor object to execute SQL commands.
     :return: A dictionary containing user IDs as keys and randomly assigned discounts as values.
     """
-    cursor.execute('SELECT id FROM User')
+    cursor.execute(SELECT_FROM_TABLE.format('id', 'User'))
     user_ids = [row[0] for row in cursor.fetchall()]
-    num_users_to_choose = min(10, len(user_ids))
+    num_users_to_choose = random.randint(1, min(10, len(user_ids)))
     chosen_user_ids = random.sample(user_ids, num_users_to_choose)
     user_ids_with_discounts = {user_id: random.choice(DISCOUNTS) for user_id in chosen_user_ids}
 
@@ -158,14 +163,14 @@ def get_users_with_debts(cursor):
     """
     cursor.execute('SELECT User_id FROM Account WHERE Amount < 0')
     users_with_debts = cursor.fetchall()
-    print(users_with_debts)
+
     full_names = []
     for user_data in users_with_debts:
         user_id = user_data[0]
         cursor.execute(SELECT_BY_ID.format('Name, Surname', 'User'), (user_id,))
         user_name = cursor.fetchall()
-        print(user_name)
-        full_names = [' '.join(name) for name in user_name]
+        parse = [' '.join(name) for name in user_name]
+        full_names.append(parse)
 
     return full_names
 
@@ -178,9 +183,9 @@ def get_bank_with_largest_capital(cursor):
     :param cursor: The database cursor object to execute SQL commands.
     :return: A string indicating the bank that have the largest capital.
     """
-    cursor.execute('SELECT Bank_id, Amount FROM Account')
+    cursor.execute(SELECT_FROM_TABLE.format('Bank_id, Amount', 'Account'))
     acc = cursor.fetchall()
-    banks = {user[0]: user[0] + user[1] for user in acc}
+    banks = {bank_id: sum(user[1] for user in acc if user[0] == bank_id) for bank_id, _ in acc}
 
     b_id = max(banks, key=banks.get)
     cursor.execute(SELECT_BY_ID.format('name', 'Bank'), (b_id,))
@@ -196,9 +201,8 @@ def get_bank_with_oldest_client(cursor):
     :param cursor: The database cursor object to execute SQL commands.
     :return: A string indicating the bank that serves the oldest client.
     """
-    cursor.execute('SELECT Birth_day FROM User')
-    birth_days = [birth_day[0] for birth_day in cursor.fetchall()]
-    oldest_client_birth_day = min(birth_days)
+    cursor.execute(SELECT_FROM_TABLE.format('Birth_day', 'User'))
+    oldest_client_birth_day = min(birth_day[0] for birth_day in cursor.fetchall())
 
     cursor.execute('SELECT id FROM User WHERE Birth_day = ?', (oldest_client_birth_day,))
     user_id = cursor.fetchone()[0]
@@ -214,13 +218,13 @@ def get_bank_with_highest_outbound_users(cursor):
     :param cursor: The database cursor object to execute SQL commands.
     :return: A string indicating the bank that have the highest outbound users.
     """
-    cursor.execute('SELECT Bank_sender_name, Account_sender_id FROM Transact')
+    cursor.execute(SELECT_FROM_TABLE.format('Bank_sender_name, Account_sender_id', 'Transact'))
     banks_users_count = {}
 
     for bank_name, account_id in cursor.fetchall():
         cursor.execute(SELECT_BY_ID.format('User_id', 'Account'), (account_id,))
-        (user_id) = cursor.fetchone()
-        print(user_id)
+        user_id = cursor.fetchone()
+
         banks_users_count.setdefault(bank_name, set())
         banks_users_count[bank_name].add(user_id)
 
@@ -231,32 +235,15 @@ def get_bank_with_highest_outbound_users(cursor):
            f'- {bank_with_highest_users}'
 
 
-def delete_users(cursor):
-    """
-    Delete users with missing or incomplete information from the database.
-
-    :param cursor: A database cursor for executing SQL queries.
-    """
-    cursor.execute('SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL '
-                   'OR Birth_day IS NULL')
-
-    user_ids_with_missing_info = [row[0] for row in cursor.fetchall()]
-
-    list(map(delete_user, user_ids_with_missing_info))
-
-
-def delete_accounts(cursor):
-    """
-    Delete accounts with missing or incomplete information from the database.
-
-    :param cursor: A database cursor for executing SQL queries.
-    """
-    cursor.execute('SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL '
-                   'OR Account_Number IS NULL OR Bank_id IS NULL OR '
-                   'Currency IS NULL OR Amount IS NULL OR Status IS NULL ')
-    account_ids_with_missing_info = [row[0] for row in cursor.fetchall()]
-
-    list(map(delete_account, account_ids_with_missing_info))
+def delete_users_or_accounts(cursor, table):
+    if table == 'User':
+        cursor.execute('SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL '
+                       'OR Birth_day IS NULL')
+    else:
+        cursor.execute('SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL '
+                       'OR Account_Number IS NULL OR Bank_id IS NULL OR '
+                       'Currency IS NULL OR Amount IS NULL OR Status IS NULL')
+    return [row[0] for row in cursor.fetchall()]
 
 
 @db_connection
@@ -267,10 +254,17 @@ def delete_users_and_accounts_with_missing_info(cursor):
     :param cursor: The database cursor object to execute SQL commands.
     :return: A message indicating the success of the operation.
     """
-    delete_users(cursor)
-    delete_accounts(cursor)
+    users = delete_users_or_accounts(cursor, 'User')
+    accounts = delete_users_or_accounts(cursor, 'Account')
+
+    list(map(delete_user, users))
+    list(map(delete_account, accounts))
 
     return 'Users and Accounts with missing information deleted successfully'
+
+
+def parse_full_name(user_full_name):
+    return user_full_name.strip().split()
 
 
 @db_connection
@@ -282,14 +276,14 @@ def get_user_transactions_last_3_months(cursor, user_full_name):
     :param user_full_name: The full name of the user who have the transactions.
     :return: A list with user transactions.
     """
-    name, surname = user_full_name.strip().split()
+    name, surname = parse_full_name(user_full_name)
     cursor.execute('SELECT id FROM User WHERE Name = ? AND Surname = ?', (name, surname))
-    user_id = cursor.fetchone()
+    (user_id,) = cursor.fetchone()
     check_availability(user_id, 'User not found')
 
     three_months = datetime.now() - timedelta(days=90)
 
     cursor.execute('SELECT * FROM Transact WHERE Account_sender_id = ? '
                    'OR Account_receiver_id = ? '
-                   'AND DATETIME >= ?', (user_id[0], user_id[0], three_months))
+                   'AND DATETIME >= ?', (user_id, user_id, three_months))
     return cursor.fetchall()

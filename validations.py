@@ -9,8 +9,8 @@ def validate_user(data):
     :param data: The full name to be validated.
     :return: A list containing two parts of the full name.
     """
-    parts = data[0][0] if isinstance(data, list) else data[0]
-    end = data[0][1:] if isinstance(data, list) else data[1:]
+    parts = data[0]
+    end = data[1:]
 
     name_parts = re.findall(r'\w+', parts)
     if len(name_parts) != 2:
@@ -28,7 +28,7 @@ def validate_strict_value(field_name, value, allowed_values):
     :param allowed_values: The allowed values for the field.
     """
     if value not in allowed_values:
-        raise ValueError(f'Not allowed value {value!r} for field "{field_name}"!')
+        raise ValueError(f'Not allowed value {value!r} for field {field_name!r}!')
 
 
 def validate_datetime(dt=None):
@@ -38,9 +38,7 @@ def validate_datetime(dt=None):
     :param dt: The datetime string or object to be validated.
     :return: The validated datetime string in the format '%Y-%m-%d %H:%M:%S'.
     """
-    if dt is None:
-        dt = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    return dt
+    return dt if dt is not None else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
 def validate_account_number(data):
@@ -55,7 +53,7 @@ def validate_account_number(data):
     if len(account_number) != 18:
         raise ValueError('Invalid account number length. It should be a string of 18 characters')
 
-    if not re.match(r'ID--[a-zA-Z]{1,3}-\d+-', account_number):
+    if not re.match(r'ID--.*[a-zA-Z]{1,3}-\d+-.*', account_number):
         raise ValueError(
             'Invalid account number format. It should begin with "ID--", '
             'followed by 1 to 3 letters, a dash, '
