@@ -4,10 +4,10 @@ from decorator import db_connection
 from validations import validate_account_number, validate_user
 
 
-def add_data_base(cursor, *args, fnc=None, table, cols):
+def add_data_base(cursor, *args, validate_fnc=None, table, cols):
     data = args[0] if isinstance(args[0], list) else args
     for user_data in data:
-        user_data = fnc(user_data) if fnc else user_data
+        user_data = validate_fnc(user_data) if validate_fnc else user_data
         placeholders = ','.join(['?'] * len(user_data))
         cursor.execute(f'INSERT INTO {table} {cols} VALUES ({placeholders})', user_data)
 
@@ -23,7 +23,7 @@ def add_users(cursor, *args):
     :param args: Any number of user data tuples or a list of user data tuples.
     :return: A success message if users are added successfully.
     """
-    return add_data_base(cursor, *args, fnc=validate_user,
+    return add_data_base(cursor, *args, validate_fnc=validate_user,
                          table='User', cols='(Name, Surname, Birth_day, Accounts)')
 
 
@@ -48,7 +48,7 @@ def add_accounts(cursor, *args):
     :param args: Any number of account data tuples or a list of account data tuples.
     :return: A success message if accounts are added successfully.
     """
-    return add_data_base(cursor, *args, fnc=validate_account_number, table='Account',
+    return add_data_base(cursor, *args, validate_fnc=validate_account_number, table='Account',
                          cols='(User_id, Type, Account_Number, Bank_id, Currency, Amount, Status)')
 
 

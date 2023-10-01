@@ -235,15 +235,10 @@ def get_bank_with_highest_outbound_users(cursor):
            f'- {bank_with_highest_users}'
 
 
-def delete_users_or_accounts(cursor, table):
-    if table == 'User':
-        cursor.execute('SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL '
-                       'OR Birth_day IS NULL')
-    else:
-        cursor.execute('SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL '
-                       'OR Account_Number IS NULL OR Bank_id IS NULL OR '
-                       'Currency IS NULL OR Amount IS NULL OR Status IS NULL')
-    return [row[0] for row in cursor.fetchall()]
+def delete_users_or_accounts(cursor, query, delete_func):
+    cursor.execute(query)
+    data_to_delete = [row[0] for row in cursor.fetchall()]
+    list(map(delete_func, data_to_delete))
 
 
 @db_connection
@@ -254,11 +249,14 @@ def delete_users_and_accounts_with_missing_info(cursor):
     :param cursor: The database cursor object to execute SQL commands.
     :return: A message indicating the success of the operation.
     """
-    users = delete_users_or_accounts(cursor, 'User')
-    accounts = delete_users_or_accounts(cursor, 'Account')
+    user_select_query = 'SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL ' \
+                        'OR Birth_day IS NULL'
+    account_select_query = 'SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL ' \
+                           'OR Account_Number IS NULL OR Bank_id IS NULL OR ' \
+                           'Currency IS NULL OR Amount IS NULL OR Status IS NULL'
 
-    list(map(delete_user, users))
-    list(map(delete_account, accounts))
+    delete_users_or_accounts(cursor, user_select_query, delete_user)
+    delete_users_or_accounts(cursor, account_select_query, delete_account)
 
     return 'Users and Accounts with missing information deleted successfully'
 

@@ -9,6 +9,12 @@ from api_module import (get_users_with_debts, assign_random_discounts, get_bank_
                         transfer_money, check_availability)
 
 BANK = 'Bank'
+TEST_ERROR_MESSAGE = 'Error'
+AMOUNT_TO_TRANSFER = 900
+TEST_CURR_1 = 'USD'
+TEST_CURR_2 = 'EUR'
+TEST_BANK_1 = 'Bank1'
+TEST_BANK_2 = 'Bank2'
 
 
 def test_get_bank_name(cursor):
@@ -20,14 +26,13 @@ def test_get_bank_name(cursor):
 
 @patch('api_module.requests.get')
 def test_get_currency_conversion_rate(mock_f):
-    from_cur = 'USD'
-    to_cur = 'EUR'
-    mock_json = MagicMock(return_value={'data': {'EUR': 0.91}})
+    euro_conv_rate = 0.91
+    mock_json = MagicMock(return_value={'data': {TEST_CURR_2: euro_conv_rate}})
     mock_f.return_value.json = mock_json
 
-    actual = get_currency_conversion_rate(from_cur, to_cur)
+    actual = get_currency_conversion_rate(TEST_CURR_1, TEST_CURR_2)
 
-    assert actual == 0.91
+    assert actual == euro_conv_rate
 
 
 def test_get_currency_and_amount(cursor):
@@ -39,8 +44,8 @@ def test_get_currency_and_amount(cursor):
 
 @pytest.mark.parametrize('field, error_message, expected',
                          [
-                             (None, 'Error', 'Error'),
-                             (1, 'Error', None)
+                             (None, TEST_ERROR_MESSAGE, TEST_ERROR_MESSAGE),
+                             (1, TEST_ERROR_MESSAGE, None)
                          ])
 def test_check_availability(field, error_message, expected):
     actual = check_availability(field, error_message)
@@ -52,13 +57,13 @@ def test_check_availability(field, error_message, expected):
 @patch('api_module.get_currency_and_amount')
 @patch('api_module.check_availability')
 def test_conversion_accounts(mock_f, mock_c, mock_a, cursor):
-    mock_c.return_value = ('USD', 900)
+    mock_c.return_value = (TEST_CURR_1, AMOUNT_TO_TRANSFER)
     mock_f.return_value = None
     mock_a.return_value = 1
 
     actual = conversion_accounts(cursor, 1, 2, 100)
 
-    assert actual == (900, 'USD', 100)
+    assert actual == (AMOUNT_TO_TRANSFER, TEST_CURR_1, 100)
 
 
 @patch('api_module.conversion_accounts')
@@ -69,10 +74,10 @@ def test_transfer_money(mock_dt, mock_bn, mock_f, cursor):
     receiver_account_id = 2
     amount = 200
     mock_dt.return_value = '2023-08-22 11:51:01'
-    mock_bn.side_effect = ['Bank1', 'Bank2']
+    mock_bn.side_effect = [TEST_BANK_1, TEST_BANK_2]
 
     cursor.execute.side_effect = [None, None, None]
-    mock_f.return_value = 200, 'USD', 200
+    mock_f.return_value = amount, TEST_CURR_1, amount
     transfer_money.__wrapped__(cursor, sender_acc_id, receiver_account_id, amount)
 
     cursor.execute.assert_has_calls([call('UPDATE Account SET Amount = Amount - ? WHERE id = ?',
@@ -107,10 +112,10 @@ def test_get_users_with_debts(cursor):
 
 def test_bank_with_largest_capital(cursor):
     cursor.fetchall.return_value = [(1, 100), (1, 1000), (2, 500)]
-    cursor.fetchone.return_value = ('Bank1', 'Bank2')
+    cursor.fetchone.return_value = (TEST_BANK_1, TEST_BANK_2)
 
     actual = get_bank_with_largest_capital.__wrapped__(cursor)
-    assert actual == 'Bank which operates the biggest capital - Bank1'
+    assert actual == f'Bank which operates the biggest capital - {TEST_BANK_1}'
     cursor.execute.assert_called_with('SELECT name FROM Bank WHERE id = ?', (1,))
 
 
@@ -122,29 +127,29 @@ def test_get_bank_with_oldest_client(mock_f, cursor):
 
     actual = get_bank_with_oldest_client.__wrapped__(cursor)
 
-    assert actual == 'Bank which serves the oldest client - Bank'
+    assert actual == f'Bank which serves the oldest client - {BANK}'
 
 
 def test_get_bank_with_highest_outbound_users(cursor):
-    cursor.fetchall.return_value = [('Bank1', 1), ('Bank1', 3), ('Bank2', 2)]
+    cursor.fetchall.return_value = [(TEST_BANK_1, 1), (TEST_BANK_1, 3), (TEST_BANK_2, 2)]
     cursor.fetchone.side_effect = [(1,), (2,), (3,)]
 
     actual = get_bank_with_highest_outbound_users.__wrapped__(cursor)
 
-    assert actual == 'Bank with the highest users which performed outbound transactions - Bank1'
+    assert actual == f'Bank with the highest users which performed outbound transactions - {TEST_BANK_1}'
 
 
-@pytest.mark.parametrize('table, message',
+@pytest.mark.parametrize('message',
                          [
-                             ('User', 'SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL OR Birth_day IS NULL'),
-                             ('Account', 'SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL '
-                                         'OR Account_Number IS NULL OR Bank_id IS NULL OR '
-                                         'Currency IS NULL OR Amount IS NULL OR Status IS NULL')
+                             'SELECT id FROM User WHERE Name IS NULL OR Surname IS NULL OR Birth_day IS NULL',
+                             'SELECT id FROM Account WHERE User_id IS NULL OR Type IS NULL '
+                             'OR Account_Number IS NULL OR Bank_id IS NULL OR '
+                             'Currency IS NULL OR Amount IS NULL OR Status IS NULL'
                          ])
-def test_delete_users_or_accounts(table, message, cursor):
+def test_delete_users_or_accounts(message, cursor):
+    delete_func_mock = MagicMock()
     cursor.fetchall.return_value = [(1,)]
-    actual = delete_users_or_accounts(cursor, table)
-    assert actual == [1]
+    delete_users_or_accounts(cursor, message, delete_func_mock)
     cursor.execute.assert_called_with(message)
 
 
@@ -165,7 +170,7 @@ def test_get_user_transactions_last_3_months(mock_f, mock_dt, cursor):
 
     mock_dt.return_value = '2023-01-01'
     cursor.fetchone.return_value = (1,)
-    cursor.fetchall.return_value = [(3, 'b', 1, 'ba', 2, 'USD', 100.0, '2023-08-22 11:51:01')]
+    cursor.fetchall.return_value = [(3, 'b', 1, 'ba', 2, TEST_CURR_1, 100.0, '2023-08-22 11:51:01')]
     actual = get_user_transactions_last_3_months.__wrapped__(cursor, name)
 
-    assert actual == [(3, 'b', 1, 'ba', 2, 'USD', 100.0, '2023-08-22 11:51:01')]
+    assert actual == [(3, 'b', 1, 'ba', 2, TEST_CURR_1, 100.0, '2023-08-22 11:51:01')]

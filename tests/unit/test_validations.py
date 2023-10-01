@@ -3,6 +3,8 @@ import pytest
 
 from validations import validate_datetime, validate_account_number, validate_strict_value, validate_user
 
+TEST_ACCOUNT_DATA = [1, 'credit', None, 1, 'USD', 1000.0, 'gold']
+
 
 def test_validate_user_full_name():
     data = ('John Do', '1990-01-01', 'acc1')
@@ -36,17 +38,20 @@ def test_validate_datetime(mock_f):
 
 
 def test_validate_account_number():
-    data = (1, 'credit', 'ID--1s3-ss-199-o-1', 1, 'USD', 1000.0, 'gold')
+    account_number = 'ID--1s3-ss-199-o-1'
+    data = (*TEST_ACCOUNT_DATA[:2], account_number, *TEST_ACCOUNT_DATA[3:])
+
     actual = validate_account_number(data)
     assert actual == data
 
 
-@pytest.mark.parametrize('data',
+@pytest.mark.parametrize('account_number',
                          [
-                             (1, 'credit', 'ID--1s3-ss-199-o-', 1, 'USD', 1000.0, 'gold'),
-                             (1, 'credit', '12341s3-ss-199-o-1', 1, 'USD', 1000.0, 'gold'),
-                             (1, 'credit', 'ID--1s3-ss-o-1', 1, 'USD', 1000.0, 'gold')
+                             'ID--1s3-ss-199-o-',
+                             '12341s3-ss-199-o-1',
+                             'ID--1s3-ss-o-1'
                          ])
-def test_validate_account_number_error(data):
+def test_validate_account_number_error(account_number):
+    data = (*TEST_ACCOUNT_DATA[:2], account_number, *TEST_ACCOUNT_DATA[3:])
     with pytest.raises(ValueError):
         validate_account_number(data)
