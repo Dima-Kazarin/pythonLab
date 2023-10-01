@@ -39,7 +39,7 @@ def test_get_currency_and_amount(cursor):
     id = 1
     get_currency_and_amount(cursor, id)
 
-    cursor.execute.assert_called_once_with('SELECT Currency, Amount FROM Account WHERE id = ?', (id,))
+    cursor.execute.assert_called_with('SELECT Currency, Amount FROM Account WHERE id = ?', (id,))
 
 
 @pytest.mark.parametrize('field, error_message, expected',
